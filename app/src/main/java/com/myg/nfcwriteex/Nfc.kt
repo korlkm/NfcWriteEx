@@ -1,11 +1,13 @@
 package com.myg.nfcwriteex
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Canvas
 import android.nfc.NfcAdapter
 import android.nfc.tech.Ndef
+import android.os.Build
 import android.view.View
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -52,21 +54,6 @@ interface Nfc : DefaultLifecycleObserver {
     private class NfcTest(
         activity: ComponentActivity
     ) : Nfc {
-        override val isEnabled: Boolean
-            get() = TODO("Not yet implemented")
-
-        override fun use(action: (adapter: NfcAdapter) -> Unit) {
-            TODO("Not yet implemented")
-        }
-    }
-
-    private class NfcDefault(
-        activity: ComponentActivity
-    ) : Nfc {
-        init {
-            activity.lifecycle.addObserver(this)
-        }
-
         private var nfcAdapter: NfcAdapter? = NfcAdapter.getDefaultAdapter(
             activity
         ) ?: let {
@@ -74,12 +61,51 @@ interface Nfc : DefaultLifecycleObserver {
             null
         }
 
+        override val isEnabled: Boolean
+            get() = nfcAdapter?.isEnabled ?: false
+
+        override fun use(action: (adapter: NfcAdapter) -> Unit) {
+            TODO("Not yet implemented")
+        }
+    }
+
+    private class NfcDefault(
+        val activity: ComponentActivity
+    ) : Nfc {
+        init {
+            activity.lifecycle.addObserver(this)
+        }
+
+        private var nfcAdapter: NfcAdapter? = null
+            get() {
+                //Defence code for nullable
+                if(field != null) {
+                    return field
+                }
+
+                //Defence code for nullable application context
+                if(activity.applicationContext == null){
+                    return null
+                }
+
+                //When nfcAdapter null,
+                field = NfcAdapter.getDefaultAdapter(
+                    activity
+                ) ?: let {
+                    Toast.makeText(activity, "NFC not supported on this device", Toast.LENGTH_SHORT).show()
+                    null
+                }
+                return field
+            }
+            @Suppress("UNUSED_PARAMETER")
+            private set(newValue) {}
+
         private lateinit var pendingIntent: PendingIntent
 
         override val isEnabled: Boolean
             get() = nfcAdapter?.isEnabled ?: false
 
-        fun getActivity(owner: LifecycleOwner): ComponentActivity? {
+        private fun getActivity(owner: LifecycleOwner): ComponentActivity? {
             if(owner !is ComponentActivity) {
                 return null
             }
@@ -89,16 +115,22 @@ interface Nfc : DefaultLifecycleObserver {
         override fun onCreate(owner: LifecycleOwner) {
             super.onCreate(owner)
 
-
             val activity = getActivity(owner) ?: return
 
+            @Suppress("UnspecifiedImmutableFlag")
             pendingIntent = PendingIntent.getActivity(
                 activity,
                 0,
                 Intent(activity, javaClass).apply {
                     addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 },
-                0
+                PendingIntent.FLAG_UPDATE_CURRENT.let {
+                    if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        it.or(PendingIntent.FLAG_MUTABLE)
+                    } else {
+                        it
+                    }
+                }
             )
         }
 
